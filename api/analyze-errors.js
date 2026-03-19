@@ -22,36 +22,42 @@ export default async function handler(req) {
 
   try {
     const body = await req.json()
-    const { erros, conteudosDoGabarito } = body
-    // conteudosDoGabarito = { "91": "Biologia — Genética", "92": "Matemática — Funções" }
+    const { pdfBase64, erros } = body
+    // erros = [{ questao: 91, resposta: 'B', correta: 'D' }, ...]
 
-    if (!erros?.length) return new Response(JSON.stringify({ error: 'Sem erros' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+    if (!pdfBase64 || !erros?.length) return new Response(JSON.stringify({ error: 'Dados insuficientes' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
 
-    // Se não tem conteúdos do gabarito, retorna sem categorização
-    const temConteudos = conteudosDoGabarito && Object.keys(conteudosDoGabarito).length > 0
-    if (!temConteudos) {
-      return new Response(JSON.stringify({
-        erros: erros.map(e => ({ questao: e.questao, area: '', disciplina: '', topico: '', resumo: '' }))
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
-    }
+    // Detecta dia pela numeração
+    const primeiraQ = erros[0]?.questao || 1
+    const isDia2 = primeiraQ > 90
+    const areasRelevantes = isDia2
+      ? ['Matemática','Física','Química','Biologia']
+      : ['Língua Portuguesa','Literatura','Língua Estrangeira','História','Geografia','Filosofia','Sociologia']
 
-    // Monta lista de erros com conteúdo do gabarito
-    const listaErros = erros.map(e => {
-      const cont = conteudosDoGabarito[String(e.questao)] || conteudosDoGabarito[e.questao] || ''
-      return 'Q' + e.questao + (cont ? ': "' + cont + '"' : '')
-    }).join('\n')
+    const estruturaFiltrada = {}
+    areasRelevantes.forEach(a => { if (ESTRUTURA[a]) estruturaFiltrada[a] = ESTRUTURA[a] })
 
-    const estruturaStr = JSON.stringify(ESTRUTURA)
-
-    const prompt = 'Mapeie cada questão para a estrutura do sistema usando os conteúdos fornecidos.\n\nESTRUTURA DO SISTEMA:\n' + estruturaStr + '\n\nQUESTÕES COM CONTEÚDO DO GABARITO:\n' + listaErros + '\n\nRetorne JSON puro sem markdown:\n{"erros":[{"questao":91,"area":"Biologia","disciplina":"Biologia 1 — Citologia e Genética","topico":"1ª lei de Mendel","resumo":"genética mendeliana"}]}'
+    const numerosErrados = erros.map(e => 'Q' + e.questao).join(', ')
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 2000,
-        messages: [{ role: 'user', content: prompt }]
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+            { type: 'text', text: `Você é especialista no ENEM. O aluno errou as questões: ${numerosErrados}
+
+Leia APENAS essas questões no PDF e classifique cada uma usando EXATAMENTE esta estrutura:
+${JSON.stringify(estruturaFiltrada)}
+
+Retorne JSON puro sem markdown:
+{"erros":[{"questao":91,"area":"Biologia","disciplina":"Biologia 1 — Citologia e Genética","topico":"Mitose","resumo":"divisão celular"}]}` }
+          ]
+        }]
       })
     })
 

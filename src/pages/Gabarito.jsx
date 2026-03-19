@@ -26,7 +26,7 @@ async function extrairGabarito(file, questaoInicial, totalQuestoes) {
   })
   const data = await resp.json()
   if (data.error) throw new Error(data.error)
-  return { gabarito: data.gabarito || {}, conteudos: data.conteudos || {} }
+  return { gabarito: data.gabarito || {}, pdfBase64 }
 }
 
 async function analisarErros(provaFile, erros) {
@@ -235,7 +235,7 @@ export default function Gabarito() {
 
   // Dados
   const [gabarito, setGabarito] = useState({})
-  const [conteudosGabarito, setConteudosGabarito] = useState({})
+  const [gabaritoPdfBase64, setGabaritoPdfBase64] = useState('')
   const [respostas, setRespostas] = useState({})
   const [errosAnalisados, setErrosAnalisados] = useState([])
   const [resultado, setResultado] = useState(null)
@@ -253,12 +253,10 @@ export default function Gabarito() {
     if (!nome.trim()) { setErro('Dê um nome ao simulado.'); return }
     setErro(''); setLoading(true); setLoadingMsg('Extraindo gabarito com IA...')
     try {
-      const { gabarito: gab, conteudos: cont } = await extrairGabarito(gabaritoFile, questaoInicial, totalQuestoes)
+      const { gabarito: gab, pdfBase64 } = await extrairGabarito(gabaritoFile, questaoInicial, totalQuestoes)
       if (Object.keys(gab).length < 5) { setErro('Não consegui extrair o gabarito. Verifique o PDF.'); setLoading(false); return }
       setGabarito(gab)
-      setConteudosGabarito(cont)
-      const temCont = Object.keys(cont).length > 0
-      if (temCont) { setLoadingMsg('Gabarito extraído! Conteúdos encontrados no PDF ✓') }
+      setGabaritoPdfBase64(pdfBase64)
       setEtapa('respostas')
     } catch(e) { setErro(`Erro: ${e.message}`) }
     setLoading(false)
@@ -293,11 +291,10 @@ export default function Gabarito() {
 
     setLoading(true)
 
-    const temConteudos = Object.keys(conteudosGabarito).length > 0
-    if (temConteudos || provaFile) {
+    if (gabaritoPdfBase64) {
       setLoadingMsg('Categorizando erros com IA...')
       try {
-        const analisados = await analisarErros(errosList, conteudosGabarito)
+        const analisados = await analisarErros(gabaritoPdfBase64, errosList)
         // Mescla dados do resultado com análise da IA
         const merged = errosList.map(e => {
           const ia = analisados.find(a => String(a.questao) === String(e.questao)) || {}
