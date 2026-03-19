@@ -32,7 +32,7 @@ export default async function handler(req) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
+        max_tokens: 3000,
         messages: [{
           role: 'user',
           content: [
@@ -42,11 +42,24 @@ export default async function handler(req) {
             },
             {
               type: 'text',
-              text: `Extraia o gabarito oficial deste PDF. As questões vão de ${questaoInicial} até ${questaoFinal}.
-Retorne APENAS um objeto JSON no formato:
-{"${questaoInicial}":"A","${questaoInicial + 1}":"B",...,"${questaoFinal}":"C"}
-onde a chave é o número da questão (de ${questaoInicial} até ${questaoFinal}) e o valor é a alternativa correta (A, B, C, D ou E).
-Se uma questão for anulada, use "AN". Não inclua nenhum texto além do JSON puro. Sem markdown, sem explicações.`
+              text: `Extraia o gabarito deste PDF. As questões vão de ${questaoInicial} até ${questaoFinal}.
+
+Muitos gabaritos (especialmente SAS, Anglo, pH) incluem o conteúdo/matéria de cada questão além da resposta correta.
+
+Retorne APENAS este JSON, sem markdown:
+{
+  "gabarito": {
+    "${questaoInicial}": "A",
+    "${questaoInicial + 1}": "B"
+  },
+  "conteudos": {
+    "${questaoInicial}": "Biologia — Genética",
+    "${questaoInicial + 1}": "Matemática — Funções"
+  }
+}
+
+- "gabarito": chave = número da questão, valor = alternativa correta (A/B/C/D/E ou AN se anulada)
+- "conteudos": chave = número da questão, valor = matéria e conteúdo exatamente como escrito no gabarito. Se o gabarito NÃO tiver conteúdo, retorne "conteudos" como objeto vazio {}.`
             }
           ]
         }]
@@ -63,7 +76,7 @@ Se uma questão for anulada, use "AN". Não inclua nenhum texto além do JSON pu
     }
 
     if (data.error) {
-      return new Response(JSON.stringify({ error: `API error: ${data.error.message}` }), {
+      return new Response(JSON.stringify({ error: 'API error: ' + data.error.message }), {
         status: 500, headers: { 'Content-Type': 'application/json' }
       })
     }
@@ -71,15 +84,18 @@ Se uma questão for anulada, use "AN". Não inclua nenhum texto além do JSON pu
     const text = data.content?.[0]?.text || '{}'
     const clean = text.replace(/```json|```/g, '').trim()
 
-    let gabarito = {}
-    try { gabarito = JSON.parse(clean) }
+    let result = {}
+    try { result = JSON.parse(clean) }
     catch {
       return new Response(JSON.stringify({ error: 'Não consegui parsear o gabarito', raw: clean.slice(0, 300) }), {
         status: 500, headers: { 'Content-Type': 'application/json' }
       })
     }
 
-    return new Response(JSON.stringify({ gabarito }), {
+    return new Response(JSON.stringify({
+      gabarito: result.gabarito || {},
+      conteudos: result.conteudos || {}
+    }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
     })

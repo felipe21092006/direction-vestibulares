@@ -26,7 +26,7 @@ async function extrairGabarito(file, questaoInicial, totalQuestoes) {
   })
   const data = await resp.json()
   if (data.error) throw new Error(data.error)
-  return data.gabarito || {}
+  return { gabarito: data.gabarito || {}, conteudos: data.conteudos || {} }
 }
 
 async function analisarErros(provaFile, erros) {
@@ -235,6 +235,7 @@ export default function Gabarito() {
 
   // Dados
   const [gabarito, setGabarito] = useState({})
+  const [conteudosGabarito, setConteudosGabarito] = useState({})
   const [respostas, setRespostas] = useState({})
   const [errosAnalisados, setErrosAnalisados] = useState([])
   const [resultado, setResultado] = useState(null)
@@ -252,9 +253,12 @@ export default function Gabarito() {
     if (!nome.trim()) { setErro('Dê um nome ao simulado.'); return }
     setErro(''); setLoading(true); setLoadingMsg('Extraindo gabarito com IA...')
     try {
-      const gab = await extrairGabarito(gabaritoFile, questaoInicial, totalQuestoes)
+      const { gabarito: gab, conteudos: cont } = await extrairGabarito(gabaritoFile, questaoInicial, totalQuestoes)
       if (Object.keys(gab).length < 5) { setErro('Não consegui extrair o gabarito. Verifique o PDF.'); setLoading(false); return }
       setGabarito(gab)
+      setConteudosGabarito(cont)
+      const temCont = Object.keys(cont).length > 0
+      if (temCont) { setLoadingMsg('Gabarito extraído! Conteúdos encontrados no PDF ✓') }
       setEtapa('respostas')
     } catch(e) { setErro(`Erro: ${e.message}`) }
     setLoading(false)
@@ -289,10 +293,11 @@ export default function Gabarito() {
 
     setLoading(true)
 
-    if (provaFile) {
-      setLoadingMsg('Analisando questões com IA... Isso pode levar alguns segundos.')
+    const temConteudos = Object.keys(conteudosGabarito).length > 0
+    if (temConteudos || provaFile) {
+      setLoadingMsg('Categorizando erros com IA...')
       try {
-        const analisados = await analisarErros(provaFile, errosList)
+        const analisados = await analisarErros(errosList, conteudosGabarito)
         // Mescla dados do resultado com análise da IA
         const merged = errosList.map(e => {
           const ia = analisados.find(a => String(a.questao) === String(e.questao)) || {}
@@ -486,40 +491,21 @@ export default function Gabarito() {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
-                Gabarito oficial *
-              </div>
-              <UploadBox
-                label="PDF do gabarito"
-                sublabel="Obrigatório"
-                file={gabaritoFile}
-                onFile={setGabaritoFile}
-              />
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
+              Gabarito oficial em PDF *
             </div>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
-                Prova (questões) <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>— opcional</span>
-              </div>
-              <UploadBox
-                label="PDF da prova"
-                sublabel="Para a IA categorizar os erros"
-                file={provaFile}
-                onFile={setProvaFile}
-              />
-            </div>
+            <UploadBox
+              label="PDF do gabarito oficial"
+              sublabel="Gabaritos SAS, ENEM, Anglo, pH e outros"
+              file={gabaritoFile}
+              onFile={setGabaritoFile}
+            />
           </div>
 
-          {provaFile ? (
-            <div style={{ fontSize: 12, padding: '8px 12px', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, color: '#065F46' }}>
-              ✨ Com a prova, a IA vai identificar automaticamente a matéria e tópico de cada erro!
-            </div>
-          ) : (
-            <div style={{ fontSize: 12, padding: '8px 12px', background: 'var(--surface2)', borderRadius: 8, color: 'var(--text-tertiary)' }}>
-              Sem a prova, os erros serão categorizados como "Conteúdo" sem detalhamento de matéria.
-            </div>
-          )}
+          <div style={{ fontSize: 12, padding: '10px 14px', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, color: '#065F46' }}>
+            ✨ Se o gabarito tiver o conteúdo de cada questão (como o SAS), a IA categoriza os erros automaticamente!
+          </div>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
