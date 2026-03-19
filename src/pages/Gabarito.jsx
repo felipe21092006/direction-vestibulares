@@ -30,6 +30,10 @@ async function extrairGabarito(file, questaoInicial, totalQuestoes) {
 }
 
 async function analisarErros(provaFile, erros) {
+  const sizeMB = provaFile.size / (1024 * 1024)
+  if (sizeMB > 3.5) {
+    throw new Error('PDF muito grande (' + sizeMB.toFixed(1) + 'MB). Comprima em ilovepdf.com e tente novamente.')
+  }
   const provaBase64 = await fileTob64(provaFile)
   const resp = await fetch('/api/analyze-errors', {
     method: 'POST',
@@ -37,7 +41,6 @@ async function analisarErros(provaFile, erros) {
     body: JSON.stringify({ provaBase64, erros })
   })
   const data = await resp.json()
-  console.log('ANALYZE-ERRORS RESPONSE:', JSON.stringify(data).slice(0, 500))
   if (data.error) throw new Error(data.error)
   return data.erros || []
 }
