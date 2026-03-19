@@ -41,6 +41,7 @@ async function analisarErros(provaFile, erros) {
     body: JSON.stringify({ provaBase64, erros })
   })
   const data = await resp.json()
+  console.log("ANALYZE RESULT:", JSON.stringify(data).slice(0, 800))
   if (data.error) throw new Error(data.error)
   return data.erros || []
 }
